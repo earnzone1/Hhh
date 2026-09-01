@@ -24,21 +24,38 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Create .env file with Gemini API key
-        run: echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
+      - name: Show directory structure
+        run: find . -maxdepth 3 -name "*.kts" -o -name "gradlew" | head -20
 
-      - name: Generate Gradle Wrapper
-        run: gradle wrapper --gradle-version 8.9
+      - name: Find project root and build
+        run: |
+          if [ -f "./gradlew" ]; then
+            ROOT="."
+          elif [ -f "./dubai-studio/gradlew" ]; then
+            ROOT="./dubai-studio"
+          else
+            # gradlew নেই, wrapper তৈরি করতে হবে
+            ROOT=$(find . -name "settings.gradle.kts" -not -path "*/.git/*" | head -1 | xargs dirname)
+            echo "Found root: $ROOT"
+            cd $ROOT
+            gradle wrapper --gradle-version 8.9
+            cd -
+            ROOT=$(find . -name "gradlew" | head -1 | xargs dirname)
+          fi
+          echo "PROJECT_ROOT=$ROOT" >> $GITHUB_ENV
+
+      - name: Create .env file
+        run: echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > ${{ env.PROJECT_ROOT }}/.env
 
       - name: Make gradlew executable
-        run: chmod +x ./gradlew
+        run: chmod +x ${{ env.PROJECT_ROOT }}/gradlew
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug
+        run: ${{ env.PROJECT_ROOT }}/gradlew assembleDebug
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: "**/app/build/outputs/apk/debug/app-debug.apk"
           retention-days: 7
