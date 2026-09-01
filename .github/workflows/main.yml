@@ -54,6 +54,16 @@ jobs:
           echo "=== compileSdk line after patch ==="
           grep "compileSdk" app/build.gradle.kts
 
+      - name: Fix KSP version to match Kotlin
+        # KSP version must share the same major.minor.patch as the Kotlin version.
+        # The project has kotlin=2.2.10 but googleDevtoolsKsp=2.3.5 (mismatch).
+        # We align both to Kotlin 2.3.5 + KSP 2.3.5-2.0.21.
+        run: |
+          sed -i 's/kotlin = "2\.2\.10"/kotlin = "2.3.5"/' gradle/libs.versions.toml
+          sed -i 's/googleDevtoolsKsp = "2\.3\.5"/googleDevtoolsKsp = "2.3.5-2.0.21"/' gradle/libs.versions.toml
+          echo "=== Kotlin + KSP versions after patch ==="
+          grep -E "^kotlin |^googleDevtoolsKsp" gradle/libs.versions.toml
+
       - name: Create placeholder google-services.json
         # Prevents google-services plugin from failing the build.
         # Replace this with a real google-services.json secret if you use Firebase features.
@@ -98,6 +108,10 @@ jobs:
           if [ ! -f ".env.example" ]; then
             echo "GEMINI_API_KEY=MY_GEMINI_API_KEY" > .env.example
           fi
+
+      - name: Install Android SDK platform 36
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" --sdk_root=$ANDROID_HOME
 
       - name: Generate gradlew if missing
         run: |
