@@ -17,24 +17,87 @@ jobs:
         run: |
           ZIP=$(find . -maxdepth 1 -name "*.zip" | head -1)
           if [ ! -z "$ZIP" ]; then
+            mkdir -p temp_extract
             unzip -q "$ZIP" -d temp_extract/
-            if [ -d "temp_extract/app" ]; then
-              cp -r temp_extract/* .
+
+            # Detect nesting: does temp_extract contain a single subdirectory with app/?
+            INNER=$(find temp_extract -mindepth 1 -maxdepth 1 -type d | head -1)
+            if [ -d "$INNER/app" ]; then
+              SOURCE="$INNER"
+            elif [ -d "temp_extract/app" ]; then
+              SOURCE="temp_extract"
             else
-              cp -r temp_extract/*/* .
+              SOURCE="temp_extract"
             fi
+
+            # Copy everything including dotfiles
+            cp -r "$SOURCE"/. .
             rm -rf temp_extract
           fi
 
-      - name: Set up JDK 17  # ✅ Changed from 11 to 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'  # ✅ Changed from '11' to '17'
+          java-version: '17'
           distribution: 'temurin'
           cache: gradle
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+
+      - name: Patch compileSdk DSL incompatibility
+        # The AI Studio project uses compileSdk { version = release(36) { ... } }
+        # which is an experimental DSL not supported outside AI Studio.
+        # Replace it with the standard integer form: compileSdk = 36
+        run: |
+          sed -i 's/compileSdk { version = release(36) { minorApiLevel = 1 } }/compileSdk = 36/' app/build.gradle.kts
+          echo "=== compileSdk line after patch ==="
+          grep "compileSdk" app/build.gradle.kts
+
+      - name: Create placeholder google-services.json
+        # Prevents google-services plugin from failing the build.
+        # Replace this with a real google-services.json secret if you use Firebase features.
+        run: |
+          if [ ! -f "app/google-services.json" ]; then
+            cat > app/google-services.json << 'EOF'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "placeholder-project",
+              "storage_bucket": "placeholder-project.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
+                  "android_client_info": {
+                    "package_name": "com.aistudio.videodubbing.kqzvpt"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [{ "current_key": "placeholder" }],
+                "services": {
+                  "appinvite_service": { "other_platform_oauth_client": [] }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
+          fi
+
+      - name: Create .env file from secrets
+        run: |
+          cat > .env << 'EOF'
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          EOF
+
+      - name: Ensure .env.example exists
+        # Required by the Secrets Gradle Plugin as defaultPropertiesFileName
+        run: |
+          if [ ! -f ".env.example" ]; then
+            echo "GEMINI_API_KEY=MY_GEMINI_API_KEY" > .env.example
+          fi
 
       - name: Generate gradlew if missing
         run: |
@@ -43,30 +106,33 @@ jobs:
           fi
           chmod +x ./gradlew
 
-      - name: Create .env file from secrets
-        run: |
-          cat > .env << 'EOF'
-          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-          EOF
-
       - name: Create debug keystore
         run: |
-          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey \
-            -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
+          keytool -genkey -v \
+            -keystore debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null || true
 
-      - name: Verify Gradle configuration
+      - name: Verify configuration
         run: |
-          echo "=== Java Version ===" 
+          echo "=== Java Version ==="
           java -version
-          echo -e "\n=== Gradle Wrapper ===" 
+          echo -e "\n=== Gradle Wrapper ==="
           cat gradle/wrapper/gradle-wrapper.properties
+          echo -e "\n=== .env.example ==="
+          cat .env.example
+          echo -e "\n=== compileSdk check ==="
+          grep "compileSdk" app/build.gradle.kts
 
       - name: Build Debug APK
         run: |
           ./gradlew clean assembleDebug \
             --stacktrace \
-            --info \
             -Dorg.gradle.jvmargs="-Xmx4g -Dfile.encoding=UTF-8"
 
       - name: Check build output
