@@ -44,15 +44,34 @@ jobs:
                   print(repr(line))
           PYEOF
 
-      - name: Fix kotlin and ksp versions
+      - name: Fix AGP, kotlin, ksp versions
+        # AGP 9.1.1 is not stable yet - use 8.7.3 (latest stable).
+        # kotlin 2.2.10 does not exist - use 2.1.0.
+        # ksp must match kotlin version.
+        # Gradle wrapper must match AGP 8.x requirement (8.10.2).
         run: |
           python3 - <<'PYEOF'
-          import pathlib
+          import pathlib, re
+
+          # Fix libs.versions.toml
           f = pathlib.Path("gradle/libs.versions.toml")
           content = f.read_text()
-          content = content.replace('kotlin = "2.2.10"', 'kotlin = "2.1.0"')
+          content = content.replace('agp = "9.1.1"',        'agp = "8.7.3"')
+          content = content.replace('kotlin = "2.2.10"',    'kotlin = "2.1.0"')
           content = content.replace('googleDevtoolsKsp = "2.3.5"', 'googleDevtoolsKsp = "2.1.0-1.0.29"')
           f.write_text(content)
+          print("=== versions ===")
+          for line in content.splitlines():
+              if any(k in line for k in ["agp","kotlin","ksp","Ksp"]):
+                  print(line)
+
+          # Fix gradle-wrapper.properties to use Gradle 8.10.2 (required by AGP 8.7.3)
+          g = pathlib.Path("gradle/wrapper/gradle-wrapper.properties")
+          gc = g.read_text()
+          gc = re.sub(r'gradle-[\d.]+-bin\.zip', 'gradle-8.10.2-bin.zip', gc)
+          g.write_text(gc)
+          print("=== gradle wrapper ===")
+          print(gc)
           PYEOF
 
       - name: Set up JDK 17
@@ -65,44 +84,22 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Create gradlew manually WITHOUT running gradle wrapper
-        # gradle wrapper command reads build.gradle.kts and fails.
-        # Instead, download the jar and write gradlew script directly.
+      - name: Create gradlew manually
         run: |
           if [ ! -f "gradlew" ]; then
-            GRADLE_VERSION="9.3.1"
+            GRADLE_VERSION="8.10.2"
             mkdir -p gradle/wrapper
 
-            # Write gradle-wrapper.properties
-            cat > gradle/wrapper/gradle-wrapper.properties << EOF
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip
-          networkTimeout=10000
-          validateDistributionUrl=true
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          EOF
-
-            # Download gradle-wrapper.jar
             curl -sL "https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar" \
               -o gradle/wrapper/gradle-wrapper.jar
 
-            # Write gradlew script
             cat > gradlew << 'GRADLEW'
           #!/bin/sh
           exec java -jar "$(dirname "$0")/gradle/wrapper/gradle-wrapper.jar" "$@"
           GRADLEW
-
-            # If curl failed or jar is broken, use a known working jar from gradle releases
-            if [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
-              curl -sL "https://github.com/gradle/gradle/raw/master/gradle/wrapper/gradle-wrapper.jar" \
-                -o gradle/wrapper/gradle-wrapper.jar
-            fi
           fi
           chmod +x ./gradlew
-          echo "gradlew ready"
-          ls -la gradlew gradle/wrapper/
+          ls -lah gradlew gradle/wrapper/
 
       - name: Create placeholder google-services.json
         run: |
@@ -168,14 +165,15 @@ jobs:
         run: |
           echo "=== compileSdk ==="
           grep "compileSdk" app/build.gradle.kts
-          echo "=== kotlin/ksp ==="
-          grep -E "^kotlin|^googleDevtoolsKsp" gradle/libs.versions.toml
-          echo "=== gradlew ==="
-          ls -lah gradlew gradle/wrapper/
+          echo "=== versions ==="
+          grep -E "^agp|^kotlin|^googleDevtoolsKsp" gradle/libs.versions.toml
+          echo "=== gradle wrapper ==="
+          cat gradle/wrapper/gradle-wrapper.properties
 
       - name: Build Debug APK
         run: |
           ./gradlew clean assembleDebug \
+            --no-configuration-cache \
             --stacktrace \
             -Dorg.gradle.jvmargs="-Xmx4g -Dfile.encoding=UTF-8"
 
