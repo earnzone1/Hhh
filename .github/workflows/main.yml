@@ -33,7 +33,21 @@ jobs:
           import re, pathlib
           f = pathlib.Path("app/build.gradle.kts")
           content = f.read_text()
-          fixed = re.sub(r'compileSdk\s*\{[^}]*\}', 'compileSdk = 36', content)
+
+          # Handles the nested form:
+          #   compileSdk { version = release(36) { minorApiLevel = 1 } }
+          # (two closing braces) — must match BOTH, or a stray "}" is left
+          # behind which silently breaks the rest of the file.
+          fixed = re.sub(
+              r'compileSdk\s*\{\s*version\s*=\s*release\(\s*(\d+)\s*\)\s*\{[^}]*\}\s*\}',
+              r'compileSdk = \1',
+              content,
+          )
+
+          # Fallback: handles the simpler single-brace form:
+          #   compileSdk { version = release(36) }
+          fixed = re.sub(r'compileSdk\s*\{[^{}]*\}', 'compileSdk = 36', fixed)
+
           f.write_text(fixed)
           for line in fixed.splitlines():
               if "compileSdk" in line:
