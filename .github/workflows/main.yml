@@ -54,7 +54,7 @@ jobs:
           gc = g.read_text()
           gc = re.sub(r'gradle-[\d.]+-bin\.zip', 'gradle-8.10.2-bin.zip', gc)
           g.write_text(gc)
-          print("Versions fixed")
+          print("Done")
           PYEOF
 
       - name: Set up JDK 17
@@ -63,22 +63,28 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install Gradle 8.10.2 directly
+      - name: Download gradle-wrapper.jar and gradlew from GitHub
+        # gradle wrapper command always reads project build files and fails.
+        # Instead, download the real jar and script directly from Gradle's GitHub tag.
         run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.10.2-bin.zip -O /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /opt/
-          export GRADLE_HOME=/opt/gradle-8.10.2
-          echo "GRADLE_HOME=/opt/gradle-8.10.2" >> $GITHUB_ENV
-          echo "/opt/gradle-8.10.2/bin" >> $GITHUB_PATH
-          gradle --version
+          mkdir -p gradle/wrapper
 
-      - name: Generate gradlew using installed Gradle
-        run: |
-          gradle wrapper --gradle-version 8.10.2
+          echo "Downloading gradle-wrapper.jar..."
+          curl -sL \
+            "https://raw.githubusercontent.com/gradle/gradle/refs/tags/v8.10.2/gradle/wrapper/gradle-wrapper.jar" \
+            -o gradle/wrapper/gradle-wrapper.jar
+          echo "Jar size: $(ls -lah gradle/wrapper/gradle-wrapper.jar)"
+
+          echo "Downloading gradlew script..."
+          curl -sL \
+            "https://raw.githubusercontent.com/gradle/gradle/refs/tags/v8.10.2/gradlew" \
+            -o gradlew
           chmod +x gradlew
-          echo "=== gradlew ok ==="
+
+          echo "=== First 5 lines of gradlew ==="
           head -5 gradlew
-          ls -lah gradle/wrapper/
+          echo "=== Wrapper jar check ==="
+          file gradle/wrapper/gradle-wrapper.jar
 
       - name: Create placeholder google-services.json
         run: |
@@ -142,7 +148,8 @@ jobs:
           echo "=== compileSdk ===" && grep "compileSdk" app/build.gradle.kts
           echo "=== versions ===" && grep -E "^agp|^kotlin|^googleDevtoolsKsp" gradle/libs.versions.toml
           echo "=== gradle wrapper ===" && cat gradle/wrapper/gradle-wrapper.properties
-          echo "=== java ===" && java -version
+          echo "=== gradlew ===" && ls -lah gradlew
+          echo "=== wrapper jar ===" && ls -lah gradle/wrapper/gradle-wrapper.jar
 
       - name: Build Debug APK
         run: |
