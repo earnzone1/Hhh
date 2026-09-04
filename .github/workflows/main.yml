@@ -67,13 +67,13 @@ jobs:
           import pathlib, re
           f = pathlib.Path("gradle/libs.versions.toml")
           content = f.read_text()
-          content = content.replace('agp = "9.1.1"', 'agp = "8.7.3"')
+          content = content.replace('agp = "9.1.1"', 'agp = "8.9.3"')
           content = content.replace('kotlin = "2.2.10"', 'kotlin = "2.1.0"')
           content = content.replace('googleDevtoolsKsp = "2.3.5"', 'googleDevtoolsKsp = "2.1.0-1.0.29"')
           f.write_text(content)
           g = pathlib.Path("gradle/wrapper/gradle-wrapper.properties")
           gc = g.read_text()
-          gc = re.sub(r'gradle-[\d.]+-bin\.zip', 'gradle-8.10.2-bin.zip', gc)
+          gc = re.sub(r'gradle-[\d.]+-bin\.zip', 'gradle-8.11.1-bin.zip', gc)
           g.write_text(gc)
           print("Done")
           PYEOF
@@ -92,13 +92,13 @@ jobs:
 
           echo "Downloading gradle-wrapper.jar..."
           curl -sL \
-            "https://raw.githubusercontent.com/gradle/gradle/refs/tags/v8.10.2/gradle/wrapper/gradle-wrapper.jar" \
+            "https://raw.githubusercontent.com/gradle/gradle/refs/tags/v8.11.1/gradle/wrapper/gradle-wrapper.jar" \
             -o gradle/wrapper/gradle-wrapper.jar
           echo "Jar size: $(ls -lah gradle/wrapper/gradle-wrapper.jar)"
 
           echo "Downloading gradlew script..."
           curl -sL \
-            "https://raw.githubusercontent.com/gradle/gradle/refs/tags/v8.10.2/gradlew" \
+            "https://raw.githubusercontent.com/gradle/gradle/refs/tags/v8.11.1/gradlew" \
             -o gradlew
           chmod +x gradlew
 
