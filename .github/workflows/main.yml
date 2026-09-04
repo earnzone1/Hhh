@@ -20,7 +20,6 @@ jobs:
             mkdir -p temp_extract
             unzip -q "$ZIP" -d temp_extract/
 
-            # Detect nesting: does temp_extract contain a single subdirectory with app/?
             INNER=$(find temp_extract -mindepth 1 -maxdepth 1 -type d | head -1)
             if [ -d "$INNER/app" ]; then
               SOURCE="$INNER"
@@ -30,7 +29,6 @@ jobs:
               SOURCE="temp_extract"
             fi
 
-            # Copy everything including dotfiles
             cp -r "$SOURCE"/. .
             rm -rf temp_extract
           fi
@@ -45,18 +43,40 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Patch compileSdk DSL incompatibility
-        # The AI Studio project uses compileSdk { version = release(36) { ... } }
-        # which is an experimental DSL not supported outside AI Studio.
-        # Replace it with the standard integer form: compileSdk = 36
+      - name: Fix compileSdk DSL (Python-based - handles leading spaces)
         run: |
-          sed -i 's/compileSdk { version = release(36) { minorApiLevel = 1 } }/compileSdk = 36/' app/build.gradle.kts
-          echo "=== compileSdk line after patch ==="
-          grep "compileSdk" app/build.gradle.kts
+          python3 - <<'PYEOF'
+          import re, pathlib
+          f = pathlib.Path("app/build.gradle.kts")
+          content = f.read_text()
+          fixed = re.sub(
+              r'compileSdk\s*\{[^}]*\}',
+              'compileSdk = 36',
+              content
+          )
+          f.write_text(fixed)
+          print("=== compileSdk after fix ===")
+          for line in fixed.splitlines():
+              if "compileSdk" in line:
+                  print(repr(line))
+          PYEOF
+
+      - name: Fix kotlin and ksp versions in libs.versions.toml
+        run: |
+          python3 - <<'PYEOF'
+          import pathlib
+          f = pathlib.Path("gradle/libs.versions.toml")
+          content = f.read_text()
+          content = content.replace('kotlin = "2.2.10"', 'kotlin = "2.1.0"')
+          content = content.replace('googleDevtoolsKsp = "2.3.5"', 'googleDevtoolsKsp = "2.1.0-1.0.29"')
+          f.write_text(content)
+          print("=== versions after fix ===")
+          for line in content.splitlines():
+              if "kotlin" in line or "ksp" in line or "Ksp" in line:
+                  print(line)
+          PYEOF
 
       - name: Create placeholder google-services.json
-        # Prevents google-services plugin from failing the build.
-        # Replace this with a real google-services.json secret if you use Firebase features.
         run: |
           if [ ! -f "app/google-services.json" ]; then
             cat > app/google-services.json << 'EOF'
@@ -93,7 +113,6 @@ jobs:
           EOF
 
       - name: Ensure .env.example exists
-        # Required by the Secrets Gradle Plugin as defaultPropertiesFileName
         run: |
           if [ ! -f ".env.example" ]; then
             echo "GEMINI_API_KEY=MY_GEMINI_API_KEY" > .env.example
@@ -101,7 +120,9 @@ jobs:
 
       - name: Install Android SDK platform 36
         run: |
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" --sdk_root=$ANDROID_HOME
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "platforms;android-36" \
+            --sdk_root=$ANDROID_HOME
 
       - name: Generate gradlew if missing
         run: |
@@ -128,10 +149,10 @@ jobs:
           java -version
           echo -e "\n=== Gradle Wrapper ==="
           cat gradle/wrapper/gradle-wrapper.properties
-          echo -e "\n=== .env.example ==="
-          cat .env.example
           echo -e "\n=== compileSdk check ==="
           grep "compileSdk" app/build.gradle.kts
+          echo -e "\n=== kotlin/ksp versions ==="
+          grep -E "kotlin|ksp|Ksp" gradle/libs.versions.toml | head -10
 
       - name: Build Debug APK
         run: |
