@@ -19,7 +19,6 @@ jobs:
           if [ ! -z "$ZIP" ]; then
             mkdir -p temp_extract
             unzip -q "$ZIP" -d temp_extract/
-
             INNER=$(find temp_extract -mindepth 1 -maxdepth 1 -type d | head -1)
             if [ -d "$INNER/app" ]; then
               SOURCE="$INNER"
@@ -28,30 +27,24 @@ jobs:
             else
               SOURCE="temp_extract"
             fi
-
             cp -r "$SOURCE"/. .
             rm -rf temp_extract
           fi
 
-      - name: Fix compileSdk DSL BEFORE gradlew
+      - name: Fix compileSdk DSL
         run: |
           python3 - <<'PYEOF'
           import re, pathlib
           f = pathlib.Path("app/build.gradle.kts")
           content = f.read_text()
-          fixed = re.sub(
-              r'compileSdk\s*\{[^}]*\}',
-              'compileSdk = 36',
-              content
-          )
+          fixed = re.sub(r'compileSdk\s*\{[^}]*\}', 'compileSdk = 36', content)
           f.write_text(fixed)
-          print("=== compileSdk after fix ===")
           for line in fixed.splitlines():
               if "compileSdk" in line:
                   print(repr(line))
           PYEOF
 
-      - name: Fix kotlin and ksp versions BEFORE gradlew
+      - name: Fix kotlin and ksp versions
         run: |
           python3 - <<'PYEOF'
           import pathlib
@@ -60,18 +53,7 @@ jobs:
           content = content.replace('kotlin = "2.2.10"', 'kotlin = "2.1.0"')
           content = content.replace('googleDevtoolsKsp = "2.3.5"', 'googleDevtoolsKsp = "2.1.0-1.0.29"')
           f.write_text(content)
-          print("=== versions after fix ===")
-          for line in content.splitlines():
-              if "kotlin" in line or "ksp" in line or "Ksp" in line:
-                  print(line)
           PYEOF
-
-      - name: Generate gradlew if missing
-        run: |
-          if [ ! -f "gradlew" ]; then
-            gradle wrapper --gradle-version 9.3.1
-          fi
-          chmod +x ./gradlew
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -82,6 +64,45 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+
+      - name: Create gradlew manually WITHOUT running gradle wrapper
+        # gradle wrapper command reads build.gradle.kts and fails.
+        # Instead, download the jar and write gradlew script directly.
+        run: |
+          if [ ! -f "gradlew" ]; then
+            GRADLE_VERSION="9.3.1"
+            mkdir -p gradle/wrapper
+
+            # Write gradle-wrapper.properties
+            cat > gradle/wrapper/gradle-wrapper.properties << EOF
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip
+          networkTimeout=10000
+          validateDistributionUrl=true
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+
+            # Download gradle-wrapper.jar
+            curl -sL "https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar" \
+              -o gradle/wrapper/gradle-wrapper.jar
+
+            # Write gradlew script
+            cat > gradlew << 'GRADLEW'
+          #!/bin/sh
+          exec java -jar "$(dirname "$0")/gradle/wrapper/gradle-wrapper.jar" "$@"
+          GRADLEW
+
+            # If curl failed or jar is broken, use a known working jar from gradle releases
+            if [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
+              curl -sL "https://github.com/gradle/gradle/raw/master/gradle/wrapper/gradle-wrapper.jar" \
+                -o gradle/wrapper/gradle-wrapper.jar
+            fi
+          fi
+          chmod +x ./gradlew
+          echo "gradlew ready"
+          ls -la gradlew gradle/wrapper/
 
       - name: Create placeholder google-services.json
         run: |
@@ -145,14 +166,12 @@ jobs:
 
       - name: Verify configuration
         run: |
-          echo "=== Java Version ==="
-          java -version
-          echo -e "\n=== Gradle Wrapper ==="
-          cat gradle/wrapper/gradle-wrapper.properties
-          echo -e "\n=== compileSdk check ==="
+          echo "=== compileSdk ==="
           grep "compileSdk" app/build.gradle.kts
-          echo -e "\n=== kotlin/ksp versions ==="
-          grep -E "kotlin|ksp|Ksp" gradle/libs.versions.toml | head -10
+          echo "=== kotlin/ksp ==="
+          grep -E "^kotlin|^googleDevtoolsKsp" gradle/libs.versions.toml
+          echo "=== gradlew ==="
+          ls -lah gradlew gradle/wrapper/
 
       - name: Build Debug APK
         run: |
