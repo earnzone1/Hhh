@@ -20,13 +20,9 @@ jobs:
             mkdir -p temp_extract
             unzip -q "$ZIP" -d temp_extract/
             INNER=$(find temp_extract -mindepth 1 -maxdepth 1 -type d | head -1)
-            if [ -d "$INNER/app" ]; then
-              SOURCE="$INNER"
-            elif [ -d "temp_extract/app" ]; then
-              SOURCE="temp_extract"
-            else
-              SOURCE="temp_extract"
-            fi
+            if [ -d "$INNER/app" ]; then SOURCE="$INNER"
+            elif [ -d "temp_extract/app" ]; then SOURCE="temp_extract"
+            else SOURCE="temp_extract"; fi
             cp -r "$SOURCE"/. .
             rm -rf temp_extract
           fi
@@ -58,7 +54,7 @@ jobs:
           gc = g.read_text()
           gc = re.sub(r'gradle-[\d.]+-bin\.zip', 'gradle-8.10.2-bin.zip', gc)
           g.write_text(gc)
-          print("Done")
+          print("Versions fixed")
           PYEOF
 
       - name: Set up JDK 17
@@ -66,32 +62,23 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Download proper gradlew and wrapper jar
+      - name: Install Gradle 8.10.2 directly
         run: |
-          GRADLE_VERSION="8.10.2"
-          mkdir -p gradle/wrapper
+          wget -q https://services.gradle.org/distributions/gradle-8.10.2-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt/
+          export GRADLE_HOME=/opt/gradle-8.10.2
+          echo "GRADLE_HOME=/opt/gradle-8.10.2" >> $GITHUB_ENV
+          echo "/opt/gradle-8.10.2/bin" >> $GITHUB_PATH
+          gradle --version
 
-          # Download official gradle-wrapper.jar
-          curl -sL \
-            "https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar" \
-            -o gradle/wrapper/gradle-wrapper.jar
-
-          # Download official gradlew script
-          curl -sL \
-            "https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradlew" \
-            -o gradlew
-
+      - name: Generate gradlew using installed Gradle
+        run: |
+          gradle wrapper --gradle-version 8.10.2
           chmod +x gradlew
-
-          echo "=== jar size ==="
-          ls -lah gradle/wrapper/gradle-wrapper.jar
-          echo "=== gradlew first line ==="
-          head -3 gradlew
+          echo "=== gradlew ok ==="
+          head -5 gradlew
+          ls -lah gradle/wrapper/
 
       - name: Create placeholder google-services.json
         run: |
@@ -125,7 +112,7 @@ jobs:
 
       - name: Create .env file from secrets
         run: |
-          cat > .env << 'EOF'
+          cat > .env << EOF
           GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
           EOF
 
@@ -138,8 +125,7 @@ jobs:
       - name: Install Android SDK platform 36
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-            "platforms;android-36" \
-            --sdk_root=$ANDROID_HOME
+            "platforms;android-36" --sdk_root=$ANDROID_HOME
 
       - name: Create debug keystore
         run: |
@@ -148,32 +134,29 @@ jobs:
             -storepass android \
             -alias androiddebugkey \
             -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
+            -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null || true
 
-      - name: Verify configuration
+      - name: Verify all configs
         run: |
-          echo "=== compileSdk ==="
-          grep "compileSdk" app/build.gradle.kts
-          echo "=== versions ==="
-          grep -E "^agp|^kotlin|^googleDevtoolsKsp" gradle/libs.versions.toml
-          echo "=== gradle wrapper ==="
-          cat gradle/wrapper/gradle-wrapper.properties
+          echo "=== compileSdk ===" && grep "compileSdk" app/build.gradle.kts
+          echo "=== versions ===" && grep -E "^agp|^kotlin|^googleDevtoolsKsp" gradle/libs.versions.toml
+          echo "=== gradle wrapper ===" && cat gradle/wrapper/gradle-wrapper.properties
+          echo "=== java ===" && java -version
 
       - name: Build Debug APK
         run: |
           ./gradlew clean assembleDebug \
+            --no-daemon \
             --no-configuration-cache \
             --stacktrace \
-            -Dorg.gradle.jvmargs="-Xmx4g -Dfile.encoding=UTF-8"
+            -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" \
+            2>&1 | tee build-output.log
+          exit ${PIPESTATUS[0]}
 
-      - name: Check build output
-        if: success()
-        run: |
-          find . -name "*.apk" -type f
-          ls -lah app/build/outputs/apk/debug/
+      - name: Show build log tail on failure
+        if: failure()
+        run: tail -150 build-output.log
 
       - name: Upload Debug APK
         if: success()
@@ -188,7 +171,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-failure-logs
-          path: |
-            build/
-            app/build/
+          path: build-output.log
           retention-days: 7
