@@ -45,33 +45,20 @@ jobs:
           PYEOF
 
       - name: Fix AGP, kotlin, ksp versions
-        # AGP 9.1.1 is not stable yet - use 8.7.3 (latest stable).
-        # kotlin 2.2.10 does not exist - use 2.1.0.
-        # ksp must match kotlin version.
-        # Gradle wrapper must match AGP 8.x requirement (8.10.2).
         run: |
           python3 - <<'PYEOF'
           import pathlib, re
-
-          # Fix libs.versions.toml
           f = pathlib.Path("gradle/libs.versions.toml")
           content = f.read_text()
-          content = content.replace('agp = "9.1.1"',        'agp = "8.7.3"')
-          content = content.replace('kotlin = "2.2.10"',    'kotlin = "2.1.0"')
+          content = content.replace('agp = "9.1.1"', 'agp = "8.7.3"')
+          content = content.replace('kotlin = "2.2.10"', 'kotlin = "2.1.0"')
           content = content.replace('googleDevtoolsKsp = "2.3.5"', 'googleDevtoolsKsp = "2.1.0-1.0.29"')
           f.write_text(content)
-          print("=== versions ===")
-          for line in content.splitlines():
-              if any(k in line for k in ["agp","kotlin","ksp","Ksp"]):
-                  print(line)
-
-          # Fix gradle-wrapper.properties to use Gradle 8.10.2 (required by AGP 8.7.3)
           g = pathlib.Path("gradle/wrapper/gradle-wrapper.properties")
           gc = g.read_text()
           gc = re.sub(r'gradle-[\d.]+-bin\.zip', 'gradle-8.10.2-bin.zip', gc)
           g.write_text(gc)
-          print("=== gradle wrapper ===")
-          print(gc)
+          print("Done")
           PYEOF
 
       - name: Set up JDK 17
@@ -84,22 +71,27 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Create gradlew manually
+      - name: Download proper gradlew and wrapper jar
         run: |
-          if [ ! -f "gradlew" ]; then
-            GRADLE_VERSION="8.10.2"
-            mkdir -p gradle/wrapper
+          GRADLE_VERSION="8.10.2"
+          mkdir -p gradle/wrapper
 
-            curl -sL "https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar" \
-              -o gradle/wrapper/gradle-wrapper.jar
+          # Download official gradle-wrapper.jar
+          curl -sL \
+            "https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar" \
+            -o gradle/wrapper/gradle-wrapper.jar
 
-            cat > gradlew << 'GRADLEW'
-          #!/bin/sh
-          exec java -jar "$(dirname "$0")/gradle/wrapper/gradle-wrapper.jar" "$@"
-          GRADLEW
-          fi
-          chmod +x ./gradlew
-          ls -lah gradlew gradle/wrapper/
+          # Download official gradlew script
+          curl -sL \
+            "https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradlew" \
+            -o gradlew
+
+          chmod +x gradlew
+
+          echo "=== jar size ==="
+          ls -lah gradle/wrapper/gradle-wrapper.jar
+          echo "=== gradlew first line ==="
+          head -3 gradlew
 
       - name: Create placeholder google-services.json
         run: |
