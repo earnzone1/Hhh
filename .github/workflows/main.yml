@@ -54,6 +54,13 @@ jobs:
                   print(repr(line))
           PYEOF
 
+      - name: Ensure AndroidX is enabled
+        run: |
+          touch gradle.properties
+          grep -q "^android.useAndroidX=true" gradle.properties || echo "android.useAndroidX=true" >> gradle.properties
+          grep -q "^android.enableJetifier=true" gradle.properties || echo "android.enableJetifier=true" >> gradle.properties
+          echo "=== gradle.properties ===" && cat gradle.properties
+
       - name: Fix AGP, kotlin, ksp versions
         run: |
           python3 - <<'PYEOF'
