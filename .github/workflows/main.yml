@@ -33,17 +33,7 @@ jobs:
             rm -rf temp_extract
           fi
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: gradle
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Fix compileSdk DSL (Python-based - handles leading spaces)
+      - name: Fix compileSdk DSL BEFORE gradlew
         run: |
           python3 - <<'PYEOF'
           import re, pathlib
@@ -61,7 +51,7 @@ jobs:
                   print(repr(line))
           PYEOF
 
-      - name: Fix kotlin and ksp versions in libs.versions.toml
+      - name: Fix kotlin and ksp versions BEFORE gradlew
         run: |
           python3 - <<'PYEOF'
           import pathlib
@@ -75,6 +65,23 @@ jobs:
               if "kotlin" in line or "ksp" in line or "Ksp" in line:
                   print(line)
           PYEOF
+
+      - name: Generate gradlew if missing
+        run: |
+          if [ ! -f "gradlew" ]; then
+            gradle wrapper --gradle-version 9.3.1
+          fi
+          chmod +x ./gradlew
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
       - name: Create placeholder google-services.json
         run: |
@@ -123,13 +130,6 @@ jobs:
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
             "platforms;android-36" \
             --sdk_root=$ANDROID_HOME
-
-      - name: Generate gradlew if missing
-        run: |
-          if [ ! -f "gradlew" ]; then
-            gradle wrapper --gradle-version 9.3.1
-          fi
-          chmod +x ./gradlew
 
       - name: Create debug keystore
         run: |
