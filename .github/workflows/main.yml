@@ -139,8 +139,12 @@ jobs:
 
       - name: Create .env file from secrets
         run: |
+          KEY="${{ secrets.GEMINI_API_KEY }}"
+          if [ -z "$KEY" ]; then
+            KEY="placeholder_gemini_api_key"
+          fi
           cat > .env << EOF
-          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY=$KEY
           EOF
 
       - name: Ensure .env.example exists
