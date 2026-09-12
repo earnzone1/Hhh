@@ -20,9 +20,18 @@ jobs:
 
       - name: Extract Project ZIP
         run: |
-          ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -1)
-          echo "Found ZIP: $ZIP_FILE"
-          unzip -o "$ZIP_FILE" -d ./project_extracted
+          echo "=== All files in repo ==="
+          ls -la
+
+          # Rename zip to remove spaces
+          find . -maxdepth 1 -name "*.zip" | while read f; do
+            mv "$f" ./project.zip
+          done
+
+          echo "=== Extracting project.zip ==="
+          unzip -o ./project.zip -d ./project_extracted
+
+          echo "=== Extracted OK ==="
           ls -la ./project_extracted/
 
       - name: Set up JDK 17
@@ -31,7 +40,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Generate Gradle Wrapper (8.14)
+      - name: Generate Gradle Wrapper
         run: |
           cd ./project_extracted
 
@@ -41,14 +50,13 @@ jobs:
           export PATH=$GRADLE_HOME/bin:$PATH
 
           gradle wrapper --gradle-version=8.14
-
           chmod +x gradlew
-          echo "PROJECT_DIR=$(pwd)" >> $GITHUB_ENV
 
-          echo "=== Wrapper OK ==="
+          echo "PROJECT_DIR=$(pwd)" >> $GITHUB_ENV
+          echo "=== Gradle Wrapper OK ==="
           ./gradlew --version
 
-      - name: Install Android SDK & NDK
+      - name: Install Android SDK Components
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
             "platforms;android-36" \
@@ -72,7 +80,6 @@ jobs:
           KEYSTORE_PATH: ${{ env.PROJECT_DIR }}/my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
