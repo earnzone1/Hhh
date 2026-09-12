@@ -35,15 +35,12 @@ jobs:
       - name: Generate Gradle Wrapper 9.3.1
         run: |
           cd ./project_extracted
-
           wget -q https://services.gradle.org/distributions/gradle-9.3.1-bin.zip -O /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /tmp/gradle
           export GRADLE_HOME=/tmp/gradle/gradle-9.3.1
           export PATH=$GRADLE_HOME/bin:$PATH
-
           gradle wrapper --gradle-version=9.3.1
           chmod +x gradlew
-
           echo "PROJECT_DIR=$(pwd)" >> $GITHUB_ENV
 
       - name: Install Android SDK Components
@@ -56,7 +53,13 @@ jobs:
 
       - name: Create .env file
         run: |
-          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > ${{ env.PROJECT_DIR }}/.env
+          GEMINI_KEY="${{ secrets.GEMINI_API_KEY }}"
+          if [ -z "$GEMINI_KEY" ]; then
+            GEMINI_KEY="PLACEHOLDER_KEY"
+          fi
+          echo "GEMINI_API_KEY=$GEMINI_KEY" > ${{ env.PROJECT_DIR }}/.env
+          echo "=== .env created ==="
+          cat ${{ env.PROJECT_DIR }}/.env
 
       - name: Decode & Save Keystore
         run: |
@@ -64,11 +67,9 @@ jobs:
 
       - name: Build Release APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          ./gradlew assembleRelease --no-daemon 2>&1 | grep -E "FAILURE|error:|Error|Exception|Caused by|BUILD" | head -50
-          ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY != '' && secrets.GEMINI_API_KEY || 'PLACEHOLDER_KEY' }}
           KEYSTORE_PATH: ${{ env.PROJECT_DIR }}/my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -76,7 +77,7 @@ jobs:
       - name: Find & Upload APK
         if: success()
         run: |
-          APK_PATH=$(find ${{ github.workspace }} -name "*.apk" -type f | grep -v "outputs/apk/debug" | head -1)
+          APK_PATH=$(find ${{ github.workspace }} -name "*.apk" -type f | head -1)
           echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
           echo "Found: $APK_PATH"
 
