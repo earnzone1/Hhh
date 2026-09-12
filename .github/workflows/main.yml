@@ -58,12 +58,23 @@ jobs:
             GEMINI_KEY="PLACEHOLDER_KEY"
           fi
           echo "GEMINI_API_KEY=$GEMINI_KEY" > ${{ env.PROJECT_DIR }}/.env
-          echo "=== .env created ==="
-          cat ${{ env.PROJECT_DIR }}/.env
 
-      - name: Decode & Save Keystore
+      - name: Generate Debug Keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > ${{ env.PROJECT_DIR }}/my-upload-key.jks
+          keytool -genkeypair \
+            -keystore ${{ env.PROJECT_DIR }}/my-upload-key.jks \
+            -alias upload \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 9999 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=DubAI Studio, OU=Dev, O=Example, L=City, S=State, C=US"
+          
+          echo "STORE_PASSWORD=android" >> $GITHUB_ENV
+          echo "KEY_PASSWORD=android" >> $GITHUB_ENV
+          echo "=== Keystore created ==="
+          ls -la ${{ env.PROJECT_DIR }}/my-upload-key.jks
 
       - name: Build Release APK
         working-directory: ${{ env.PROJECT_DIR }}
@@ -71,8 +82,8 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY != '' && secrets.GEMINI_API_KEY || 'PLACEHOLDER_KEY' }}
           KEYSTORE_PATH: ${{ env.PROJECT_DIR }}/my-upload-key.jks
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: android
+          KEY_PASSWORD: android
 
       - name: Find & Upload APK
         if: success()
