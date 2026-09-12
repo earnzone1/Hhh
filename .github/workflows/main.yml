@@ -20,24 +20,10 @@ jobs:
 
       - name: Extract Project ZIP
         run: |
-          echo "=== Files in repo ==="
-          ls -la
-          
           ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -1)
           echo "Found ZIP: $ZIP_FILE"
-          
           unzip -o "$ZIP_FILE" -d ./project_extracted
-          
-          echo "=== Extracted contents ==="
           ls -la ./project_extracted/
-          
-          GRADLEW=$(find ./project_extracted -name "gradlew" -type f | head -1)
-          echo "gradlew found at: $GRADLEW"
-          
-          PROJECT_DIR=$(dirname "$GRADLEW")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-          
-          chmod +x "$GRADLEW"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -45,7 +31,26 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Gradle
+      - name: Generate Gradle Wrapper
+        run: |
+          cd ./project_extracted
+          
+          # Install Gradle
+          wget -q https://services.gradle.org/distributions/gradle-8.10-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp/gradle
+          export GRADLE_HOME=/tmp/gradle/gradle-8.10
+          export PATH=$GRADLE_HOME/bin:$PATH
+          
+          # Generate wrapper
+          gradle wrapper --gradle-version=8.10
+          
+          chmod +x gradlew
+          echo "PROJECT_DIR=$(pwd)" >> $GITHUB_ENV
+          
+          echo "=== gradlew created ==="
+          ls -la gradlew
+
+      - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v3
 
       - name: Create .env file
