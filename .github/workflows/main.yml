@@ -32,19 +32,22 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Generate Gradle Wrapper 8.14.3
+      - name: Generate Gradle Wrapper 9.3.1
         run: |
           cd ./project_extracted
 
-          wget -q https://services.gradle.org/distributions/gradle-8.14.3-bin.zip -O /tmp/gradle.zip
+          wget -q https://services.gradle.org/distributions/gradle-9.3.1-bin.zip -O /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /tmp/gradle
-          export GRADLE_HOME=/tmp/gradle/gradle-8.14.3
+          export GRADLE_HOME=/tmp/gradle/gradle-9.3.1
           export PATH=$GRADLE_HOME/bin:$PATH
 
-          gradle wrapper --gradle-version=8.14.3
+          gradle wrapper --gradle-version=9.3.1
           chmod +x gradlew
 
           echo "PROJECT_DIR=$(pwd)" >> $GITHUB_ENV
+
+          echo "=== Gradle Version ==="
+          ./gradlew --version
 
       - name: Install Android SDK Components
         run: |
@@ -64,17 +67,18 @@ jobs:
 
       - name: Build Release APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           KEYSTORE_PATH: ${{ env.PROJECT_DIR }}/my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      - name: Find APK
+      - name: Find & Upload APK
         run: |
-          echo "=== APK files found ==="
+          echo "=== Searching APK ==="
           find ${{ github.workspace }} -name "*.apk" -type f
+
           APK_PATH=$(find ${{ github.workspace }} -name "*.apk" -type f | head -1)
           echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
 
