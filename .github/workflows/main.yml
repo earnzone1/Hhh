@@ -18,6 +18,27 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Extract Project ZIP
+        run: |
+          echo "=== Files in repo ==="
+          ls -la
+          
+          ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -1)
+          echo "Found ZIP: $ZIP_FILE"
+          
+          unzip -o "$ZIP_FILE" -d ./project_extracted
+          
+          echo "=== Extracted contents ==="
+          ls -la ./project_extracted/
+          
+          GRADLEW=$(find ./project_extracted -name "gradlew" -type f | head -1)
+          echo "gradlew found at: $GRADLEW"
+          
+          PROJECT_DIR=$(dirname "$GRADLEW")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          
+          chmod +x "$GRADLEW"
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -26,26 +47,6 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-
-      - name: Find & Prepare Project
-        run: |
-          echo "=== Repo Structure ==="
-          find . -maxdepth 3 -name "gradlew" -type f
-          
-          GRADLEW=$(find . -name "gradlew" -type f | head -1)
-          
-          if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew not found!"
-            ls -la
-            exit 1
-          fi
-          
-          PROJECT_DIR=$(dirname "$GRADLEW")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-          echo "Found gradlew at: $GRADLEW"
-          echo "Project dir: $PROJECT_DIR"
-          
-          chmod +x "$GRADLEW"
 
       - name: Create .env file
         run: |
