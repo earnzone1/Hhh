@@ -46,9 +46,6 @@ jobs:
 
           echo "PROJECT_DIR=$(pwd)" >> $GITHUB_ENV
 
-          echo "=== Gradle version ==="
-          ./gradlew --version
-
       - name: Install Android SDK Components
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
@@ -67,16 +64,23 @@ jobs:
 
       - name: Build Release APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: ./gradlew assembleRelease --no-daemon --stacktrace --info 2>&1 | tail -100
+        run: ./gradlew assembleRelease --no-daemon
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           KEYSTORE_PATH: ${{ env.PROJECT_DIR }}/my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
+      - name: Find APK
+        run: |
+          echo "=== APK files found ==="
+          find ${{ github.workspace }} -name "*.apk" -type f
+          APK_PATH=$(find ${{ github.workspace }} -name "*.apk" -type f | head -1)
+          echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: DubAI-Studio-Pro-release
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
-          retention-days: 7
+          path: ${{ env.APK_PATH }}
+          retention-days: 30
