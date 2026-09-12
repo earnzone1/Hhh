@@ -1,476 +1,87 @@
-# =============================================================================
-# DubAI Studio — Professional Project Configuration
-# Version: 1.0.0
-# Description: AI-Powered Video Dubbing, Translation & Copyright-Safe Processing
-# Platform: Android (Kotlin + Jetpack Compose)
-# =============================================================================
+name: DubAI Studio — Build & Release
 
-project:
-  name: "DubAI Studio"
-  description: "Professional AI Video Dubbing, Translation & Copyright-Safe Video Processing Software"
-  version: "1.0.0"
-  version_code: 1
-  package_id: "com.aistudio.videodubbing.kqzvpt"
-  namespace: "com.example"
-  type: android_application
-  language: kotlin
-  ui_framework: jetpack_compose
-  architecture: MVVM
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
-# -----------------------------------------------------------------------------
-# Android SDK Configuration
-# -----------------------------------------------------------------------------
-android:
-  compile_sdk:
-    version: 36
-    minor_api_level: 1
-  min_sdk: 24
-  target_sdk: 36
-  build_tools_version: "9.1.1"
-  java_compatibility:
-    source: VERSION_11
-    target: VERSION_11
-  build_features:
-    compose: true
-    build_config: true
-  test_options:
-    unit_tests:
-      include_android_resources: true
-  dependencies_info:
-    include_in_apk: false
-    include_in_bundle: true
+jobs:
+  build:
+    name: Build & Sign APK
+    runs-on: ubuntu-latest
 
-# -----------------------------------------------------------------------------
-# Native Build (CMake / C++ / Whisper JNI)
-# -----------------------------------------------------------------------------
-native_build:
-  cmake_version: "3.22.1"
-  cmake_lists_path: "src/main/cpp/CMakeLists.txt"
-  jni_components:
-    - name: whisper-jni
-      source: "src/main/cpp/whisper-jni.cpp"
-      purpose: "Whisper speech-recognition JNI bridge"
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-# -----------------------------------------------------------------------------
-# Signing Configurations
-# -----------------------------------------------------------------------------
-signing:
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK (for Whisper JNI)
+        run: |
+          echo "y" | sdkmanager "ndk;25.2.9519653"
+          echo "y" | sdkmanager "cmake;3.22.1"
+
+      - name: Grant Gradle Execute Permission
+        run: chmod +x gradlew
+
+      - name: Create .env file (Gemini API Key)
+        run: |
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Decode & Save Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > ${{ github.workspace }}/my-upload-key.jks
+
+      - name: Run Unit Tests
+        run: ./gradlew test
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DubAI-Studio-Pro-v1.0-release
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 7
+
   release:
-    keystore_path_env: KEYSTORE_PATH
-    keystore_default: "my-upload-key.jks"
-    key_alias: "upload"
-    store_password_env: STORE_PASSWORD
-    key_password_env: KEY_PASSWORD
-  debug:
-    keystore_file: "debug.keystore"
-    store_password: "android"
-    key_alias: "androiddebugkey"
-    key_password: "android"
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
 
-# -----------------------------------------------------------------------------
-# Build Types
-# -----------------------------------------------------------------------------
-build_types:
-  release:
-    minify_enabled: false
-    crunch_pngs: false
-    proguard_files:
-      - "proguard-android-optimize.txt"
-      - "proguard-rules.pro"
-    signing_config: release  # falls back to debugConfig if keystore absent
-  debug:
-    signing_config: debug
+    steps:
+      - name: Download APK Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: DubAI-Studio-Pro-v1.0-release
 
-# -----------------------------------------------------------------------------
-# Environment / Secrets
-# -----------------------------------------------------------------------------
-environment:
-  secrets_plugin:
-    properties_file: ".env"
-    default_properties_file: ".env.example"
-    ignore_list:
-      - "FIREBASE_APPCHECK_DEBUG_TOKEN"
-  required_secrets:
-    - key: GEMINI_API_KEY
-      description: "Google Gemini AI API key for AI dubbing & analysis"
-      source: "AI Studio Secrets Panel"
-      runtime_injected: true
-  optional_secrets:
-    - key: KEYSTORE_PATH
-      description: "Path to release signing keystore (.jks)"
-    - key: STORE_PASSWORD
-      description: "Keystore store password"
-    - key: KEY_PASSWORD
-      description: "Keystore key password"
-
-# -----------------------------------------------------------------------------
-# Dependency Versions
-# -----------------------------------------------------------------------------
-versions:
-  # Gradle & Kotlin
-  android_gradle_plugin: "9.1.1"
-  kotlin: "2.2.10"
-  google_devtools_ksp: "2.3.5"
-  secrets_gradle_plugin: "2.0.1"
-  google_services: "4.5.0"
-
-  # AndroidX Core
-  core_ktx: "1.18.0"
-  activity_compose: "1.10.1"
-
-  # Jetpack Compose
-  compose_bom: "2024.09.00"
-
-  # Lifecycle
-  lifecycle_runtime_ktx: "2.8.7"
-  lifecycle_viewmodel_compose: "2.8.7"
-  lifecycle_runtime_compose: "2.8.7"
-
-  # Navigation
-  navigation_compose: "2.8.9"
-
-  # Room (Local DB)
-  room_runtime: "2.7.0"
-  room_ktx: "2.7.0"
-  room_compiler: "2.7.0"
-
-  # Networking
-  retrofit: "2.12.0"
-  converter_moshi: "2.12.0"
-  okhttp: "4.10.0"
-  logging_interceptor: "4.10.0"
-
-  # Serialization
-  moshi_kotlin: "1.15.2"
-  moshi_kotlin_codegen: "1.15.2"
-
-  # Coroutines
-  kotlinx_coroutines_core: "1.10.2"
-  kotlinx_coroutines_android: "1.10.2"
-
-  # Image Loading
-  coil_compose: "2.7.0"
-
-  # Firebase (optional)
-  firebase_bom: "34.17.0"
-  credentials: "1.5.0"
-  googleid: "1.1.1"
-
-  # Camera (optional)
-  camera_core: "1.5.0"
-  camera_camera2: "1.5.0"
-  camera_lifecycle: "1.5.0"
-  camera_view: "1.5.0"
-
-  # Media
-  ffmpeg_kit: "6.0"
-
-  # DataStore (optional)
-  datastore_preferences: "1.1.7"
-
-  # Testing
-  junit: "4.13.2"
-  junit_android: "1.3.0"
-  espresso_core: "3.7.0"
-  kotlinx_coroutines_test: "1.10.2"
-  androidx_core_test: "1.6.1"
-  androidx_runner: "1.6.2"
-  robolectric: "4.16.1"
-  roborazzi: "1.59.0"
-  accompanist_permissions: "0.37.3"
-  play_services_location: "21.3.0"
-
-# -----------------------------------------------------------------------------
-# Active Dependencies
-# -----------------------------------------------------------------------------
-dependencies:
-  implementation:
-    compose:
-      - "androidx.compose:compose-bom:2024.09.00"
-      - "androidx.compose.ui:ui"
-      - "androidx.compose.ui:ui-graphics"
-      - "androidx.compose.ui:ui-tooling-preview"
-      - "androidx.compose.material3:material3"
-      - "androidx.compose.material:material-icons-core"
-      - "androidx.compose.material:material-icons-extended"
-
-    activity:
-      - "androidx.activity:activity-compose:1.10.1"
-
-    lifecycle:
-      - "androidx.lifecycle:lifecycle-runtime-ktx:2.8.7"
-      - "androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7"
-      - "androidx.lifecycle:lifecycle-runtime-compose:2.8.7"
-
-    navigation:
-      - "androidx.navigation:navigation-compose:2.8.9"
-
-    room:
-      - "androidx.room:room-runtime:2.7.0"
-      - "androidx.room:room-ktx:2.7.0"
-
-    networking:
-      - "com.squareup.retrofit2:retrofit:2.12.0"
-      - "com.squareup.retrofit2:converter-moshi:2.12.0"
-      - "com.squareup.okhttp3:okhttp:4.10.0"
-      - "com.squareup.okhttp3:logging-interceptor:4.10.0"
-
-    serialization:
-      - "com.squareup.moshi:moshi-kotlin:1.15.2"
-
-    coroutines:
-      - "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2"
-      - "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
-
-    image_loading:
-      - "io.coil-kt:coil-compose:2.7.0"
-
-    core:
-      - "androidx.core:core-ktx:1.18.0"
-
-  ksp:
-    - "androidx.room:room-compiler:2.7.0"
-    - "com.squareup.moshi:moshi-kotlin-codegen:1.15.2"
-
-  test_implementation:
-    - "junit:junit:4.13.2"
-    - "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2"
-    - "org.robolectric:robolectric:4.16.1"
-    - "io.github.takahirom.roborazzi:roborazzi:1.59.0"
-    - "io.github.takahirom.roborazzi:roborazzi-compose:1.59.0"
-    - "io.github.takahirom.roborazzi:roborazzi-junit-rule:1.59.0"
-    - "androidx.test:core:1.6.1"
-    - "androidx.test.ext:junit:1.3.0"
-    - "androidx.compose.ui:ui-test-junit4"
-
-  android_test_implementation:
-    - "androidx.compose.ui:ui-test-junit4"
-    - "androidx.test.espresso:espresso-core:3.7.0"
-    - "androidx.test.ext:junit:1.3.0"
-    - "androidx.test:runner:1.6.2"
-
-  debug_implementation:
-    - "androidx.compose.ui:ui-tooling"
-    - "androidx.compose.ui:ui-test-manifest"
-
-  optional_disabled:
-    firebase:
-      - "com.google.firebase:firebase-bom:34.17.0"
-      - "com.google.firebase:firebase-ai"
-      - "com.google.firebase:firebase-auth"
-      - "com.google.firebase:firebase-firestore"
-      - "com.google.firebase:firebase-appcheck-recaptcha"
-      - "com.google.firebase:firebase-appcheck-debug"
-    camera:
-      - "androidx.camera:camera-core:1.5.0"
-      - "androidx.camera:camera-camera2:1.5.0"
-      - "androidx.camera:camera-lifecycle:1.5.0"
-      - "androidx.camera:camera-view:1.5.0"
-    auth:
-      - "androidx.credentials:credentials:1.5.0"
-      - "androidx.credentials:credentials-play-services-auth:1.5.0"
-      - "com.google.android.libraries.identity.googleid:googleid:1.1.1"
-    media:
-      - "com.arthenica:ffmpeg-kit-full-gpl:6.0"
-    datastore:
-      - "androidx.datastore:datastore-preferences:1.1.7"
-    location:
-      - "com.google.android.gms:play-services-location:21.3.0"
-
-# -----------------------------------------------------------------------------
-# Android Permissions
-# -----------------------------------------------------------------------------
-permissions:
-  required:
-    - android.permission.INTERNET
-    - android.permission.ACCESS_NETWORK_STATE
-
-# -----------------------------------------------------------------------------
-# Application Components
-# -----------------------------------------------------------------------------
-components:
-  application_class: "com.example.DubStudioApplication"
-  activities:
-    - name: ".MainActivity"
-      exported: true
-      label: "@string/app_name"
-      theme: "@style/Theme.MyApplication"
-      is_launcher: true
-  providers:
-    - name: "androidx.core.content.FileProvider"
-      authority: "${applicationId}.fileprovider"
-      exported: false
-      grant_uri_permissions: true
-      file_paths_resource: "@xml/file_paths"
-
-# -----------------------------------------------------------------------------
-# Project Architecture & Source Structure
-# -----------------------------------------------------------------------------
-architecture:
-  pattern: MVVM
-  layers:
-    ui:
-      path: "app/src/main/java/com/example/ui"
-      screens:
-        - MainStudioScreen.kt
-      components:
-        - AiAnalysisCard.kt
-        - ApkDownloadDialog.kt
-        - AuthDialog.kt
-        - CopyrightShieldCard.kt
-        - LanguageSelectorSection.kt
-        - PipelineProgressView.kt
-        - PricingPaymentDialog.kt
-        - SavedDubsHistorySection.kt
-        - TopStudioBar.kt
-        - VideoPreviewResultSection.kt
-        - VideoUploadSection.kt
-      viewmodels:
-        - DubStudioViewModel.kt
-      theme:
-        - Color.kt
-        - Theme.kt
-        - Type.kt
-
-    data:
-      path: "app/src/main/java/com/example/data"
-      repositories:
-        - DubRepository.kt
-      database:
-        - AppDatabase.kt
-        - DubDao.kt
-      models:
-        - Models.kt
-        - SampleCatalog.kt
-
-    service:
-      path: "app/src/main/java/com/example/service"
-      modules:
-        audio:
-          - DubAudioEngine.kt
-        apk:
-          - ApkExportManager.kt
-        dubbing:
-          - DubbingEngine.kt
-          - VideoProcessingEngine.kt
-          - ModelManager.kt
-          - WhisperEngine.kt
-
-    native:
-      path: "app/src/main/cpp"
-      files:
-        - CMakeLists.txt
-        - whisper-jni.cpp
-
-# -----------------------------------------------------------------------------
-# AI & ML Capabilities
-# -----------------------------------------------------------------------------
-ai_capabilities:
-  primary_ai: "Google Gemini API"
-  api_capability: "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  speech_recognition:
-    engine: "Whisper"
-    binding: "JNI (C++)"
-  features:
-    - AI-powered video dubbing
-    - Multi-language translation
-    - AI voice synthesis
-    - Copyright shield processing
-    - Audio engine processing
-    - APK export management
-    - Pipeline progress tracking
-    - Saved dubs history
-
-# -----------------------------------------------------------------------------
-# Gradle Plugins
-# -----------------------------------------------------------------------------
-plugins:
-  active:
-    - id: "com.android.application"
-      version: "9.1.1"
-    - id: "org.jetbrains.kotlin.plugin.compose"
-      version: "2.2.10"
-    - id: "com.google.devtools.ksp"
-      version: "2.3.5"
-    - id: "io.github.takahirom.roborazzi"
-      version: "1.59.0"
-    - id: "com.google.android.libraries.mapsplatform.secrets-gradle-plugin"
-      version: "2.0.1"
-  optional_disabled:
-    - id: "com.google.gms.google-services"
-      version: "4.5.0"
-
-# -----------------------------------------------------------------------------
-# Gradle Wrapper
-# -----------------------------------------------------------------------------
-gradle:
-  wrapper:
-    distribution_url: "https://services.gradle.org/distributions/gradle-8.x-bin.zip"
-  build_files:
-    root: "build.gradle.kts"
-    app: "app/build.gradle.kts"
-    settings: "settings.gradle.kts"
-    version_catalog: "gradle/libs.versions.toml"
-
-# -----------------------------------------------------------------------------
-# Test Configuration
-# -----------------------------------------------------------------------------
-testing:
-  unit_tests:
-    runner: "JUnit4 + Robolectric"
-    screenshot_tests: "Roborazzi"
-    test_files:
-      - ExampleUnitTest.kt
-      - ExampleRobolectricTest.kt
-      - GreetingScreenshotTest.kt
-      - ExistingDataCrashTest.kt
-    screenshot_baseline: "app/src/test/screenshots/"
-  instrumented_tests:
-    runner: "androidx.test.runner.AndroidJUnitRunner"
-    test_files:
-      - ExampleInstrumentedTest.kt
-
-# -----------------------------------------------------------------------------
-# Output Artifacts
-# -----------------------------------------------------------------------------
-outputs:
-  release_apk:
-    filename: "DubAI-Studio-Pro-v1.0-release.apk"
-    path: "outputs/"
-    size_bytes: 14302487
-    size_human: "~13.6 MB"
-
-# -----------------------------------------------------------------------------
-# Setup Instructions
-# -----------------------------------------------------------------------------
-setup:
-  prerequisites:
-    - "Android Studio (latest stable)"
-    - "Android SDK API 36"
-    - "CMake 3.22.1 (for Whisper JNI)"
-    - "Google Gemini API Key"
-  steps:
-    - step: 1
-      action: "Open project in Android Studio via File → Open"
-    - step: 2
-      action: "Allow Android Studio to sync and resolve Gradle dependencies"
-    - step: 3
-      action: "Create .env file in project root and set GEMINI_API_KEY"
-      example: "GEMINI_API_KEY=your_actual_key_here"
-    - step: 4
-      action: "For release builds, configure keystore environment variables"
-      env_vars:
-        - KEYSTORE_PATH
-        - STORE_PASSWORD
-        - KEY_PASSWORD
-    - step: 5
-      action: "Run on emulator (API 24+) or physical device"
-    - step: 6
-      action: "For Play Store upload, remove debug signingConfig from release buildType"
-  notes:
-    - "Min SDK 24 = Android 7.0 Nougat (supports ~94% of active devices)"
-    - "Gemini API key is injected at runtime via AI Studio Secrets Panel"
-    - "Whisper JNI requires NDK to be installed in Android Studio"
-    - "Firebase dependencies are available but currently disabled"
-    - "FFmpeg Kit is available for media processing (currently disabled)"
-    
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: "DubAI Studio Pro v1.0.0"
+          body: |
+            ## DubAI Studio Pro — Release v1.0.0
+            AI-Powered Video Dubbing & Translation App
+          files: "*.apk"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
